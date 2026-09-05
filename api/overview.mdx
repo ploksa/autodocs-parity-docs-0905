@@ -1,0 +1,66 @@
+---
+title: "API Overview: Every HTTP route in the Fastify demo"
+sidebarTitle: "Overview"
+description: "Index of all HTTP routes exposed by the Fastify demo, grouped by resource, with authentication and role requirements."
+---
+
+The demo exposes 14 HTTP routes. All routes under `/api` require a valid session except `POST /api/auth/login` (see [Authentication](/auth/authentication)). Interactive Swagger UI is served at `/api/docs`.
+
+## Root
+
+Source: [`src/routes/home.ts`](https://github.com/fastify/demo/blob/main/src/routes/home.ts).
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/` | Session | Returns `Hello {username}! See documentation at {protocol}://{hostname}/documentation`. |
+
+<Note>
+  `GET /` is autoloaded from `src/routes/home.ts`, which sits above `src/routes/api/`. The `/api` auth guard applies only to `/api/*`, but `home.ts` still reads `session.user.username` and will throw if there is no session.
+</Note>
+
+## API index
+
+Source: [`src/routes/api/index.ts`](https://github.com/fastify/demo/blob/main/src/routes/api/index.ts).
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api` | Session | Returns `{ message: "Welcome to the official fastify demo!" }`. |
+
+## Authentication
+
+See [Authentication API](/api/auth).
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| POST | `/api/auth/login` | None | Log in and receive a session cookie. |
+
+## Users
+
+See [Users API](/api/users).
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| PUT | `/api/users/update-password` | Session | Change the logged-in user's password. |
+
+## Tasks
+
+See [Tasks API](/api/tasks).
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/tasks` | Session | Paginated list of tasks with filters. |
+| GET | `/api/tasks/:id` | Session | Fetch a single task by id. |
+| POST | `/api/tasks` | Session | Create a task. |
+| PATCH | `/api/tasks/:id` | Session | Update a task. |
+| DELETE | `/api/tasks/:id` | Session + `admin` | Delete a task. |
+| POST | `/api/tasks/:id/assign` | Session + `moderator` | Assign or unassign a user. |
+| POST | `/api/tasks/:id/upload` | Session | Upload a JPEG or PNG attachment (up to 1 MiB). |
+| GET | `/api/tasks/:filename/image` | Session | Stream the task's uploaded image. |
+| DELETE | `/api/tasks/:filename/image` | Session | Delete a task's uploaded image. |
+| GET | `/api/tasks/download/csv` | Session | Stream a gzipped CSV of all tasks. |
+
+## Cross-cutting behaviour
+
+- **Content types**: JSON by default. Upload uses `multipart/form-data`. Image download returns `image/*`. CSV download returns `application/gzip` with `Content-Disposition: attachment; filename="tasks.csv.gz"`.
+- **Rate limiting**: global limit of `RATE_LIMIT_MAX` requests per minute. The password change endpoint enforces `3/minute` per client. The not-found handler enforces `3` per `500` ms per client.
+- **Errors**: `5xx` responses always return `{ message: "Internal Server Error" }`. `4xx` responses use `{ message }` from `@fastify/sensible`, except for authorization failures which return a plain string body (see [Authorization](/auth/authorization)).

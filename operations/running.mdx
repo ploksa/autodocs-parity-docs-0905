@@ -1,0 +1,59 @@
+---
+title: "Running the Server: Dev, standalone, and graceful shutdown"
+sidebarTitle: "Running"
+description: "Start the Fastify demo in dev or production mode, understand its timeouts, log levels, health checks, and graceful shutdown behaviour."
+---
+
+Both `npm run dev` and `npm run start` execute [`src/server.ts`](https://github.com/fastify/demo/blob/main/src/server.ts), which registers [`src/app.ts`](https://github.com/fastify/demo/blob/main/src/app.ts) as a plugin.
+
+## Modes
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Runs `tsx --env-file=.env ./src/server.ts`. Reads `.env` and executes TypeScript directly. |
+| `npm run start` | Runs `tsc` and then `node dist/server.js`. |
+
+The `README.md` references a `npm run standalone` script; it is not defined in `package.json` at this commit. Use `npm run dev` for iteration and `npm run start` for a compiled build.
+
+## Listening port
+
+`app.listen({ port: process.env.PORT ?? 3000 })`. Set `PORT` to override the default of `3000`.
+
+## Fastify options
+
+Source: `src/server.ts`.
+
+- `connectionTimeout`: `120_000` ms
+- `requestTimeout`: `60_000` ms
+- `keepAliveTimeout`: `10_000` ms
+- `http.headersTimeout`: `15_000` ms
+- `ajv.customOptions.coerceTypes`: `'array'`
+- `ajv.customOptions.removeAdditional`: `'all'`
+
+## Logging
+
+- When stdout is a TTY: `pino-pretty` at `info` level, with `translateTime: 'HH:MM:ss Z'` and `ignore: 'pid,hostname'`.
+- Otherwise: raw JSON logs at `LOG_LEVEL` (default `silent`).
+
+The demo's error handler logs unhandled errors with the request `method`, `url`, `query`, and `params`. The not-found handler logs at `warn`.
+
+## Health
+
+`@fastify/under-pressure` performs a `SELECT 1` against Knex every `5000` ms. Failure of the health check logs an error and marks the app unhealthy.
+
+## Graceful shutdown
+
+`close-with-grace` is registered in `src/server.ts` with `delay: process.env.FASTIFY_CLOSE_GRACE_DELAY ?? 500`. On `SIGINT` / `SIGTERM`, the server waits up to the configured delay, then calls `app.close()`, which:
+
+- Drains open connections up to `connectionTimeout`.
+- Runs the `onClose` hook registered by the Knex plugin, destroying the pool.
+
+Set `FASTIFY_CLOSE_GRACE_DELAY` in your environment to change the shutdown window. `.env.example` uses `1000`.
+
+## Static uploads
+
+`@fastify/static` (see [`src/plugins/external/static.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/static.ts)) serves the `UPLOAD_DIRNAME` directory at `/uploads`. Ensure the process has write permission there; the plugin creates the directory on boot if missing.
+
+## Swagger UI
+
+`@fastify/swagger-ui` is mounted at `/api/docs` when the app starts. Only routes with `tags` in their schema appear (see [`src/plugins/external/swagger.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/swagger.ts) — `hideUntagged: true`).

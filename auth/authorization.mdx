@@ -1,0 +1,59 @@
+---
+title: "Authorization: Role-based access control for tasks"
+sidebarTitle: "Authorization"
+description: "How the Fastify demo enforces role-based access control using request decorators for admin and moderator checks on task routes."
+---
+
+Role-based access is enforced by request decorators added in [`src/plugins/app/authorization.ts`](https://github.com/fastify/demo/blob/main/src/plugins/app/authorization.ts) and used as `preHandler` hooks on individual routes.
+
+## Decorators
+
+```ts src/plugins/app/authorization.ts (excerpt)
+function verifyAccess (this: FastifyRequest, reply: FastifyReply, role: string) {
+  if (!this.session.user.roles.includes(role)) {
+    reply.status(403).send('You are not authorized to access this resource.')
+  }
+}
+
+async function isModerator (this: FastifyRequest, reply: FastifyReply) {
+  this.verifyAccess(reply, 'moderator')
+}
+
+async function isAdmin (this: FastifyRequest, reply: FastifyReply) {
+  this.verifyAccess(reply, 'admin')
+}
+```
+
+All three are attached with `fastify.decorateRequest`, so they are available as `request.verifyAccess`, `request.isModerator`, and `request.isAdmin`.
+
+## Roles
+
+Roles are strings stored in `roles.name` and joined onto users via `user_roles` (see [Schema](/database/schema)). The demo seed script inserts three roles:
+
+- `basic`
+- `moderator`
+- `admin`
+
+Assignment is cumulative: the seeded `admin` user has `basic`, `moderator`, and `admin`.
+
+## Route requirements
+
+The following routes require a role in addition to being authenticated:
+
+| Route | Required role | Source |
+| --- | --- | --- |
+| `DELETE /api/tasks/:id` | `admin` | `src/routes/api/tasks/index.ts` (`preHandler: (request, reply) => request.isAdmin(reply)`) |
+| `POST /api/tasks/:id/assign` | `moderator` | `src/routes/api/tasks/index.ts` (`preHandler: (request, reply) => request.isModerator(reply)`) |
+
+All other authenticated routes accept any signed-in user.
+
+## Response on failure
+
+If the role check fails, the handler replies with:
+
+- Status: `403`
+- Body: the plain string `You are not authorized to access this resource.`
+
+<Note>
+  The body is a raw string, not a JSON `{ message }` object, because the handler calls `reply.status(403).send('...')` with a string argument.
+</Note>

@@ -1,0 +1,51 @@
+---
+title: "Continuous Integration: GitHub Actions build and test"
+sidebarTitle: "CI"
+description: "How the Fastify demo builds, lints, and tests on GitHub Actions against Node 22 and 24 with a MySQL 8.4 service container."
+---
+
+CI runs on GitHub Actions. Source: [`.github/workflows/ci.yml`](https://github.com/fastify/demo/blob/main/.github/workflows/ci.yml).
+
+## Triggers
+
+- `push` on `main`, `next`, and `v*` branches. Paths `docs/**`, `*.md`, and `*.example` are ignored.
+- `pull_request` for all PRs, with the same path filters.
+
+Concurrency groups per workflow and branch cancel in-progress runs when a new one starts.
+
+## Matrix
+
+`build-and-test` runs on `ubuntu-latest` against Node.js `22` and `24`.
+
+## MySQL service
+
+A `mysql:8.4` service container is provisioned with:
+
+- `MYSQL_ROOT_PASSWORD: root_password`
+- `MYSQL_DATABASE: test_db`
+- `MYSQL_USER: test_user`
+- `MYSQL_PASSWORD: test_password`
+- Healthcheck via `mysqladmin ping`.
+
+## Steps
+
+1. `actions/checkout@v7` (pinned by SHA).
+2. `actions/setup-node@v7` with the matrix Node version.
+3. `npm i --ignore-scripts`.
+4. `npm run build -- --noEmit` — type-check without emitting.
+5. `npm run lint`.
+6. Generate a random `COOKIE_SECRET` with `openssl rand -hex 32`.
+7. `touch .env` so scripts that use `--env-file=.env` do not fail.
+8. `npm run db:migrate && npm run test` with these env vars:
+   - `MYSQL_HOST=localhost`
+   - `MYSQL_PORT=3306`
+   - `MYSQL_DATABASE=test_db`
+   - `MYSQL_USER=test_user`
+   - `MYSQL_PASSWORD=test_password`
+   - `COOKIE_NAME=sessid`
+   - `RATE_LIMIT_MAX=4`
+   - `CAN_SEED_DATABASE=1`
+
+## Other workflows
+
+- [`.github/workflows/lock-threads.yml`](https://github.com/fastify/demo/blob/main/.github/workflows/lock-threads.yml) — monthly cron that locks stale issues and PRs, delegating to the shared `fastify/workflows/.github/workflows/lock-threads.yml` workflow.

@@ -1,0 +1,52 @@
+---
+title: "Database Overview: MySQL, Knex, and Postgrator in the demo"
+sidebarTitle: "Overview"
+description: "How the Fastify demo connects to MySQL through Knex, manages schema with Postgrator migrations, and organises data access in repositories."
+---
+
+The demo uses MySQL 8.4 as its data store, [Knex](https://knexjs.org/) for query building, and [Postgrator](https://github.com/rickbergfalk/postgrator) for schema migrations.
+
+## Connection
+
+Source: [`src/plugins/external/knex.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/knex.ts).
+
+- Client: `mysql2`.
+- Connection info: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`.
+- Pool: `{ min: 2, max: 10 }`.
+- Exposed as `fastify.knex`. Destroyed on `onClose`.
+
+## Local MySQL with Docker Compose
+
+Source: [`docker-compose.yml`](https://github.com/fastify/demo/blob/main/docker-compose.yml).
+
+- Image: `mysql:8.4`.
+- Root password: `root_password`.
+- Database, user, and password are read from the corresponding env vars in your `.env`.
+- Healthcheck: `mysqladmin ping` every 10 seconds.
+- Volume: `db_data:/var/lib/mysql`.
+
+Start with `docker compose up -d`.
+
+## Repositories
+
+Data access is encapsulated in application plugins that decorate the Fastify instance:
+
+- [`fastify.usersRepository`](/architecture/plugins#users-users-repository-ts) — user lookup, password updates, role fetching.
+- [`fastify.tasksRepository`](/architecture/plugins#tasks-tasks-repository-ts) — task CRUD, pagination with `COUNT(*) OVER()`, and a streaming query for CSV export.
+- [`fastify.tasksFileManager`](/architecture/plugins#tasks-tasks-file-manager-ts) — upload, temp swap, and delete for task attachments.
+
+## Schema
+
+The database schema is defined in `migrations/` and documented on the [Schema](/database/schema) page.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Schema" icon="database" href="/database/schema">
+    Every table, column, and foreign key created by the migrations.
+  </Card>
+
+  <Card title="Migrations and seeding" icon="wrench" href="/database/migrations-and-seeding">
+    How to run migrations and what the seed script inserts.
+  </Card>
+</CardGroup>

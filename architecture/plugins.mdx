@@ -1,0 +1,136 @@
+---
+title: "Plugins: External wrappers and application decorators"
+sidebarTitle: "Plugins"
+description: "Reference for every plugin autoloaded from src/plugins/external and src/plugins/app, including options and Fastify decorations."
+---
+
+Fastify plugins in the demo are split into two directories that are autoloaded by [`src/app.ts`](https://github.com/fastify/demo/blob/main/src/app.ts). This page documents each one.
+
+## External plugins
+
+Located in `src/plugins/external/`. Most export an `autoConfig` object or factory consumed by `@fastify/autoload`.
+
+### `env.ts` — `@fastify/env`
+
+Loads and validates environment variables into `fastify.config`. Required keys: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `COOKIE_SECRET`, `COOKIE_NAME`, `COOKIE_SECURED`. Defaults are set for `MYSQL_HOST`, `MYSQL_PORT`, `COOKIE_SECURED` (`true`), `RATE_LIMIT_MAX` (`100`), `UPLOAD_DIRNAME` (`uploads`), and `UPLOAD_TASKS_DIRNAME` (`tasks`).
+
+`UPLOAD_DIRNAME` must be at least one character and match the pattern `^(?!.*\.{2}).*$` (no `..` traversal).
+
+Full details in [Environment variables](/configuration/environment).
+
+### `session.ts` — `@fastify/cookie` + `@fastify/session`
+
+Registers cookie parsing and session storage. Session cookie is `httpOnly`, `secure: COOKIE_SECURED`, `maxAge: 1800000` (30 minutes). Session shape: `{ user: Auth }` where `Auth` is `{ id, username, email, roles: string[] }`.
+
+### `swagger.ts` — `@fastify/swagger` + `@fastify/swagger-ui`
+
+Serves an OpenAPI 3 spec and Swagger UI at `/api/docs`. `hideUntagged: true`, so only routes with a `tags` schema entry appear in the docs.
+
+### `knex.ts`
+
+Instantiates a Knex `mysql2` client with pool `{ min: 2, max: 10 }`. Decorates the instance as `fastify.knex` and closes the pool on `onClose`.
+
+### `rate-limit.ts` — `@fastify/rate-limit`
+
+Global rate limit of `RATE_LIMIT_MAX` requests per minute. Individual routes and handlers override this (see the 404 handler and `PUT /api/users/update-password`).
+
+### `cors.ts` — `@fastify/cors`
+
+Allows methods `GET`, `POST`, `PUT`, `DELETE`. No origin restriction is configured in source.
+
+### `helmet.ts` — `@fastify/helmet`
+
+Registered with default options.
+
+### `multipart.ts` — `@fastify/multipart`
+
+Limits:
+
+- `fieldNameSize`: 100 bytes
+- `fieldSize`: 100 bytes
+- `fields`: 10
+- `fileSize`: 1 MiB (`1 * 1024 * 1024`)
+- `files`: 1
+- `parts`: 1000
+
+<Note>
+  The inline comment reads "5 MB" but the value is `1 * 1024 * 1024` bytes (1 MiB).
+</Note>
+
+### `sensible.ts` — `@fastify/sensible`
+
+Adds `reply.notFound()`, `reply.unauthorized()`, `reply.badRequest()` helpers used throughout the route handlers.
+
+### `static.ts` — `@fastify/static`
+
+Serves files from `UPLOAD_DIRNAME` (default `uploads`) under the URL prefix `/uploads`. Creates the directory if it does not exist.
+
+### `under-pressure.ts` — `@fastify/under-pressure`
+
+Rejects requests with "Service Unavailable" when the process is under load:
+
+- `maxEventLoopDelay: 1000` ms
+- `maxHeapUsedBytes: 100_000_000`
+- `maxRssBytes: 1_000_000_000`
+- `maxEventLoopUtilization: 0.98`
+- `retryAfter: 50`
+- `healthCheckInterval: 5000` ms
+
+Health check runs `SELECT 1` on the Knex connection.
+
+## Application plugins
+
+Located in `src/plugins/app/`. Each uses `fastify-plugin` (`fp`) to expose decorators to the outer scope.
+
+### `authorization.ts`
+
+Decorates `FastifyRequest` with `verifyAccess`, `isModerator`, and `isAdmin`. `isModerator` and `isAdmin` call `verifyAccess` with the role name, which replies `403 "You are not authorized to access this resource."` if the session user does not have the role.
+
+### `password-manager.ts`
+
+Decorates the instance with `passwordManager`:
+
+- `hash(value)`: `scrypt` with `keylen=32`, `cost=65536`, `blockSize=8`, `parallelization=2`. Returns `"<salt-hex>.<hash-hex>"`.
+- `compare(value, hash)`: constant-time comparison using `timingSafeEqual`.
+
+### `file-manager.ts`
+
+Decorates the instance with `fileManager`:
+
+- `ensureDir(dir)`: create a directory recursively if missing.
+- `upload(file, destPath)`: stream a multipart file to disk.
+- `move(source, destination)`: `fs.promises.rename`.
+- `unlink(filePath)`: delete a file, log a warning if it does not exist.
+- `safeJoin(uploadPath, filename)`: join a directory with a `sanitize-filename` output.
+- `randomSuffix()`: 8 random bytes as hex.
+
+### `tasks/tasks-repository.ts`
+
+Decorates the instance with `tasksRepository`:
+
+- `paginate({ page, limit, author_id?, assigned_user_id?, status?, order? })`: paginated task list with a `total` count.
+- `findById(id, trx?)`
+- `findByFilename(filename)`
+- `create(newTask)`
+- `update(id, changes, trx?)`
+- `deleteFilename(filename, value, trx)`
+- `delete(id)`
+- `createStream()`: Knex stream over all tasks (used for CSV export).
+
+### `tasks/tasks-file-manager.ts`
+
+Decorates the instance with `tasksFileManager` for the `uploads/tasks` directory, with a `temp` subdirectory used for rollback:
+
+- `upload(filename, file)`
+- `moveOldToTemp(oldFilename)` → returns `temp-<random>-<filename>`
+- `moveTempToOld(tempFilename, oldFilename)`
+- `delete(filename)`
+- `buildFilePath(filename)`
+
+### `users/users-repository.ts`
+
+Decorates the instance with `usersRepository`:
+
+- `findByEmail(email, trx?)`
+- `updatePassword(email, hashedPassword)`
+- `findUserRolesByEmail(email, trx)` — joins `users`, `user_roles`, `roles`.

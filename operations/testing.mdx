@@ -1,0 +1,65 @@
+---
+title: "Testing: Node's test runner with c8 coverage and MySQL"
+sidebarTitle: "Testing"
+description: "Run the Fastify demo test suite with the built-in Node test runner, c8 coverage, and a real MySQL instance seeded before each run."
+---
+
+The demo's tests use Node's built-in `node:test` runner via `tsx --test`, orchestrated by [glob](https://github.com/isaacs/node-glob) and covered by [c8](https://github.com/bcoe/c8). They exercise a real Fastify instance against a live MySQL database.
+
+## Run the suite
+
+```bash
+npm run test
+```
+
+Which expands to (from `package.json`):
+
+```text
+npm run db:seed && c8 npm run test:run
+# test:run: glob -c "tsx --test" "./test/**/*.ts"
+```
+
+`db:seed` requires `CAN_SEED_DATABASE=1`. In CI this is set by the workflow (see [CI](/operations/ci)).
+
+## Test helper
+
+Source: [`test/helper.ts`](https://github.com/fastify/demo/blob/main/test/helper.ts).
+
+- `build(t?)`: builds a Fastify instance with `serviceApp` registered as a plugin. When a `TestContext` is passed, the instance is closed after the test.
+- `login(email)`: posts to `/api/auth/login` with the seeded password `Password123$` and returns the session cookie value.
+- `injectWithLogin(email, opts)`: convenience that logs in and then calls `fastify.inject` with the session cookie attached.
+- `expectValidationError(res, message)`: asserts `status 400` and body `{ message }`.
+- `config()`: returns `{ skipOverride: true }` so `serviceApp` is registered with `fastify-plugin` semantics.
+
+## Test files at this commit
+
+Source directory: [`test/`](https://github.com/fastify/demo/tree/main/test).
+
+- `test/app/cors.test.ts`
+- `test/app/env.test.ts`
+- `test/app/error-handler.test.ts`
+- `test/app/not-found-handler.test.ts`
+- `test/app/rate-limit.test.ts`
+- `test/plugins/scrypt.test.ts`
+- `test/routes/api/api.test.ts`
+- `test/routes/api/auth/auth.test.ts`
+- `test/routes/api/tasks/tasks.test.ts`
+- `test/routes/api/users/users.test.ts`
+- `test/routes/home.test.ts`
+
+Fixtures for the tasks routes live in `test/routes/api/tasks/fixtures/` (`one_line.csv`, `short-logo.png`).
+
+## Environment for tests
+
+The demo expects a MySQL instance reachable with the same env vars as production. In local dev, run `docker compose up -d` first. In CI, MySQL is started as a service (see [CI](/operations/ci)).
+
+Set `RATE_LIMIT_MAX=4` for tests, per the comment in `.env.example`, so that rate-limit tests can trip the limit cheaply.
+
+## Linting
+
+```bash
+npm run lint       # eslint --ignore-pattern=dist
+npm run lint:fix   # eslint ... --fix
+```
+
+Config: [`eslint.config.js`](https://github.com/fastify/demo/blob/main/eslint.config.js) using [`neostandard`](https://github.com/neostandard/neostandard).

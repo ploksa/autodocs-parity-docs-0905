@@ -1,0 +1,76 @@
+---
+title: "Users API: Change the current user's password"
+sidebarTitle: "Users"
+description: "PUT /api/users/update-password verifies the current password and stores a new scrypt hash for the authenticated user."
+---
+
+The demo exposes one user-facing endpoint for account maintenance.
+
+## `PUT /api/users/update-password`
+
+Source: [`src/routes/api/users/index.ts`](https://github.com/fastify/demo/blob/main/src/routes/api/users/index.ts). Schema: [`src/schemas/users.ts`](https://github.com/fastify/demo/blob/main/src/schemas/users.ts).
+
+Requires an authenticated session. The email of the target user is read from `request.session.user`.
+
+### Rate limit
+
+`3` requests per minute per client, enforced by `@fastify/rate-limit` via route `config`.
+
+### Password rules
+
+Both `currentPassword` and `newPassword` must:
+
+- Be at least 8 characters.
+- Match the pattern `^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).*$` (at least one uppercase, one lowercase, one digit, and one of `#?!@$%^&*-`).
+
+### Request
+
+```http
+PUT /api/users/update-password
+Content-Type: application/json
+Cookie: <session>
+```
+
+<ParamField body="currentPassword" type="string" required>
+  Must match the stored hash after scrypt comparison.
+</ParamField>
+
+<ParamField body="newPassword" type="string" required>
+  Must differ from `currentPassword`.
+</ParamField>
+
+### Responses
+
+<ResponseField name="200" type="object">
+  <Expandable title="properties">
+    <ResponseField name="message" type="string">
+      `"Password updated successfully"`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="400" type="object">
+  <Expandable title="properties">
+    <ResponseField name="message" type="string">
+      `"New password cannot be the same as the current password."`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="401" type="object">
+  <Expandable title="properties">
+    <ResponseField name="message" type="string">
+      `"User does not exist."` or `"Invalid current password."`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+The new password is hashed with `passwordManager.hash` before being written by `usersRepository.updatePassword`.
+
+### Example
+
+```bash
+curl -i -b cookies.txt -X PUT http://localhost:3000/api/users/update-password \
+  -H 'Content-Type: application/json' \
+  -d '{"currentPassword":"Password123$","newPassword":"NewPassw0rd!"}'
+```

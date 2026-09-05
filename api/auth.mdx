@@ -1,0 +1,77 @@
+---
+title: "Authentication API: Log in and receive a session cookie"
+sidebarTitle: "Authentication"
+description: "POST /api/auth/login accepts an email and password, sets a session cookie on success, and returns 401 on invalid credentials."
+---
+
+The Fastify demo exposes one authentication endpoint. It is the only route under `/api` that is allowed without an existing session.
+
+## `POST /api/auth/login`
+
+Source: [`src/routes/api/auth/index.ts`](https://github.com/fastify/demo/blob/main/src/routes/api/auth/index.ts). Schema: [`src/schemas/auth.ts`](https://github.com/fastify/demo/blob/main/src/schemas/auth.ts) and [`src/schemas/common.ts`](https://github.com/fastify/demo/blob/main/src/schemas/common.ts).
+
+### Request
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+```
+
+<ParamField body="email" type="string" required>
+  Format `email`, length 1–255.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Length 1–255. Complexity is not enforced on login (only on `PUT /api/users/update-password`).
+</ParamField>
+
+### Responses
+
+<ResponseField name="200" type="object">
+  <Expandable title="properties">
+    <ResponseField name="success" type="boolean">
+    </ResponseField>
+
+    <ResponseField name="message" type="string">
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="401" type="object">
+  <Expandable title="properties">
+    <ResponseField name="message" type="string">
+      `"Invalid email or password."`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+On `200`, a `Set-Cookie` header carries the session id. Reuse it on subsequent requests to `/api/*`.
+
+### Example
+
+```bash
+curl -i -c cookies.txt -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"Password123$"}'
+```
+
+Successful response:
+
+```json
+{ "success": true }
+```
+
+### Session contents
+
+On success, `request.session.user` is set to:
+
+```ts
+{
+  id: number,
+  email: string,
+  username: string,
+  roles: string[]
+}
+```
+
+Roles come from the `roles` table joined via `user_roles` (see [Schema](/database/schema)).

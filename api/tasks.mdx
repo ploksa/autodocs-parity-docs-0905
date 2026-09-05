@@ -1,0 +1,215 @@
+---
+title: "Tasks API: CRUD, assignment, uploads, and CSV export"
+sidebarTitle: "Tasks"
+description: "Complete reference for every /api/tasks route: list, get, create, update, delete, assign, upload, image download, image delete, and CSV export."
+---
+
+The tasks resource is the core of the demo. All routes require an authenticated session; some require an additional role.
+
+Source: [`src/routes/api/tasks/index.ts`](https://github.com/fastify/demo/blob/main/src/routes/api/tasks/index.ts). Schemas: [`src/schemas/tasks.ts`](https://github.com/fastify/demo/blob/main/src/schemas/tasks.ts).
+
+## Task shape
+
+```ts
+{
+  id: number,               // >= 1
+  name: string,             // 1..255 chars
+  author_id: number,        // >= 1
+  assigned_user_id?: number,
+  status: 'new' | 'in-progress' | 'on-hold' | 'completed' | 'canceled' | 'archived',
+  created_at: string,       // ISO date-time
+  updated_at: string        // ISO date-time
+}
+```
+
+`filename` is stored on the row but is not part of the response schema; it is set only through the upload/image routes.
+
+## `GET /api/tasks`
+
+Paginated list.
+
+### Query
+
+<ParamField query="page" default="1" type="integer">
+  Minimum 1.
+</ParamField>
+
+<ParamField query="limit" default="10" type="integer">
+  Minimum 1, maximum 100.
+</ParamField>
+
+<ParamField query="author_id" type="integer">
+  Filter by author.
+</ParamField>
+
+<ParamField query="assigned_user_id" type="integer">
+  Filter by assignee.
+</ParamField>
+
+<ParamField query="status" type="string">
+  One of the enum values above.
+</ParamField>
+
+<ParamField query="order" default="desc" type="string">
+  `asc` or `desc`, applied to `created_at`.
+</ParamField>
+
+### Response `200`
+
+```json
+{
+  "total": 1,
+  "tasks": [ { "id": 1, "name": "...", "author_id": 1, "status": "new", "created_at": "...", "updated_at": "..." } ]
+}
+```
+
+`total` is computed with `count(*) OVER()` inside the same query used to fetch the page.
+
+## `GET /api/tasks/:id`
+
+### Params
+
+<ParamField path="id" type="number" required>
+</ParamField>
+
+### Responses
+
+- `200`: task object.
+- `404`: `{ "message": "Task not found" }`.
+
+## `POST /api/tasks`
+
+### Body
+
+<ParamField body="name" type="string" required>
+  1–255 characters.
+</ParamField>
+
+<ParamField body="assigned_user_id" type="integer">
+  Optional; must be `>= 1` if present.
+</ParamField>
+
+`author_id` is set to the session user's id. `status` is set to `new`.
+
+### Responses
+
+- `201`: `{ "id": <new task id> }`.
+
+## `PATCH /api/tasks/:id`
+
+### Params
+
+<ParamField path="id" type="number" required>
+</ParamField>
+
+### Body
+
+<ParamField body="name" type="string">
+  Optional, 1–255 characters.
+</ParamField>
+
+<ParamField body="assigned_user_id" type="integer">
+  Optional.
+</ParamField>
+
+### Responses
+
+- `200`: updated task object.
+- `404`: `{ "message": "Task not found" }`.
+
+## `DELETE /api/tasks/:id`
+
+Requires the `admin` role (see [Authorization](/auth/authorization)).
+
+### Params
+
+<ParamField path="id" type="number" required>
+</ParamField>
+
+### Responses
+
+- `204`: empty body.
+- `404`: `{ "message": "Task not found" }`.
+- `403`: plain string `"You are not authorized to access this resource."` if the caller is not an admin.
+
+## `POST /api/tasks/:id/assign`
+
+Requires the `moderator` role.
+
+### Params
+
+<ParamField path="id" type="number" required>
+</ParamField>
+
+### Body
+
+<ParamField body="userId" type="number">
+  Omit or send `null`-equivalent to unassign the task. Present value sets `assigned_user_id`.
+</ParamField>
+
+### Responses
+
+- `200`: task object with `assigned_user_id` set to `userId` (or `undefined` when unassigned).
+- `404`: `{ "message": "Task not found" }`.
+
+## `POST /api/tasks/:id/upload`
+
+Attach a JPEG or PNG image to a task. `multipart/form-data`, one file per request, up to `1 * 1024 * 1024` bytes.
+
+### Behaviour
+
+1. If the multipart file is missing, replies `404 { "message": "File not found" }`.
+2. If the file was truncated by the multipart limit, replies `400 { "message": "File size limit exceeded" }`.
+3. If MIME type is not `image/jpeg` or `image/png`, replies `400 { "message": "Invalid file type" }`.
+4. If the task does not exist, replies `404 { "message": "Task not found" }`.
+5. If the task already has a file, the old file is moved to a temp path first, then restored on failure.
+6. The new file is written as `${id}_${originalFilename}` under `uploads/tasks/`, and the task row's `filename` column is updated inside a Knex transaction.
+
+### Responses
+
+- `200`: `{ "message": "File uploaded successfully" }`.
+- `400`: file too large or invalid type (see above).
+- `404`: file or task missing.
+
+## `GET /api/tasks/:filename/image`
+
+Stream the uploaded image for the task that has this `filename`.
+
+### Params
+
+<ParamField path="filename" type="string" required>
+</ParamField>
+
+### Responses
+
+- `200`: raw image bytes, `Content-Type: image/*`.
+- `404`: `{ "message": "No task has filename \"<filename>\"" }`.
+
+Files are served with `reply.sendFile` from `${UPLOAD_DIRNAME}/${UPLOAD_TASKS_DIRNAME}` (default `uploads/tasks/`).
+
+## `DELETE /api/tasks/:filename/image`
+
+Delete the file and clear the `filename` column, inside a Knex transaction.
+
+### Params
+
+<ParamField path="filename" type="string" required>
+</ParamField>
+
+### Responses
+
+- `204`: empty body.
+- `404`: `{ "message": "No task has filename \"<filename>\"" }`.
+
+## `GET /api/tasks/download/csv`
+
+Stream all tasks as a gzipped CSV.
+
+- `Content-Type: application/gzip`
+- `Content-Disposition: attachment; filename="tasks.csv.gz"`
+
+Under the hood: `tasksRepository.createStream()` pipes into `csv-stringify` (`header: true`) and then `zlib.createGzip()`.
+
+<Note>
+  The response schema also declares `400 { message: string }`, but no code path in this handler produces a `400`.
+</Note>

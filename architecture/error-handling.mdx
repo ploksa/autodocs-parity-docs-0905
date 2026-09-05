@@ -1,0 +1,38 @@
+---
+title: "Error Handling: Custom error handler and rate-limited 404"
+sidebarTitle: "Error Handling"
+description: "How the Fastify demo handles errors, hides internal details on 5xx responses, and rate-limits the not-found handler to deter URL scanning."
+---
+
+The demo overrides Fastify's default error and not-found handlers in [`src/app.ts`](https://github.com/fastify/demo/blob/main/src/app.ts).
+
+## Error handler
+
+`fastify.setErrorHandler` logs the full error with request context (`method`, `url`, `query`, `params`), then responds:
+
+- The status code is `err.statusCode ?? 500`.
+- The body is `{ message }`. `message` is `err.message` only when `err.statusCode` is defined and less than `500`. For any status `>= 500` (or missing status), the response message is the literal string `"Internal Server Error"` to avoid leaking internals.
+
+```ts src/app.ts (excerpt)
+reply.code(err.statusCode ?? 500)
+let message = 'Internal Server Error'
+if (err.statusCode && err.statusCode < 500) {
+  message = err.message
+}
+return { message }
+```
+
+## Not-found handler
+
+`fastify.setNotFoundHandler` is wrapped in a `preHandler` that applies a per-route rate limit:
+
+- `max: 3`
+- `timeWindow: 500` ms
+
+The comment in source explains the intent: "An attacker could search for valid URLs if your 404 error handling is not rate limited."
+
+The handler logs the request at `warn` level and responds `404 { "message": "Not Found" }`.
+
+## Under-pressure responses
+
+When [`@fastify/under-pressure`](/architecture/plugins#under-pressure-ts) trips its thresholds, it returns `503` with the message `"The server is under pressure, retry later!"` and a `Retry-After: 50` header.

@@ -1,0 +1,79 @@
+---
+title: "Environment Variables: Every setting used by the Fastify demo"
+sidebarTitle: "Environment"
+description: "Complete reference for every environment variable the Fastify demo reads, with defaults, validation rules, and source file references."
+---
+
+Environment variables are loaded and validated by [`src/plugins/external/env.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/env.ts) using [`@fastify/env`](https://github.com/fastify/fastify-env). Values that pass validation are exposed as `fastify.config`. Example values live in [`.env.example`](https://github.com/fastify/demo/blob/main/.env.example).
+
+## Required variables
+
+| Variable | Type | Notes |
+| --- | --- | --- |
+| `MYSQL_HOST` | string | Default `localhost`. |
+| `MYSQL_PORT` | number | Default `3306`. |
+| `MYSQL_USER` | string | Required. |
+| `MYSQL_PASSWORD` | string | Required. |
+| `MYSQL_DATABASE` | string | Required. |
+| `COOKIE_SECRET` | string | Required. At least 32 characters recommended (`README.md`). Used by `@fastify/session`. |
+| `COOKIE_NAME` | string | Required. Name of the session cookie. |
+| `COOKIE_SECURED` | boolean | Default `true`. Controls the `Secure` flag on the session cookie. |
+
+## Optional variables
+
+| Variable | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `RATE_LIMIT_MAX` | number | `100` | Global request budget per minute for `@fastify/rate-limit`. `.env.example` sets `4` (for tests). |
+| `UPLOAD_DIRNAME` | string | `uploads` | Must match `^(?!.*\.{2}).*$` (no `..`). Root directory for uploaded files, also served statically at `/uploads`. |
+| `UPLOAD_TASKS_DIRNAME` | string | `tasks` | Subdirectory for task attachments. |
+
+## Server variables
+
+Read directly from `process.env` (see `src/server.ts` and `@types/node/environment.d.ts`):
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `PORT` | `3000` | Passed to `app.listen`. |
+| `LOG_LEVEL` | `silent` when not a TTY | Pino log level; `.env.example` sets `info`. Ignored when stdout is a TTY (uses `pino-pretty` at `info`). |
+| `FASTIFY_CLOSE_GRACE_DELAY` | `500` ms in `server.ts`; `1000` in `.env.example` | Graceful shutdown delay passed to `close-with-grace`. |
+| `NODE_ENV` | none | `.env.example` sets `production`. Fastify does not branch on this in the demo. |
+
+## Database script variables
+
+Guards inside `scripts/` require explicit opt-in for destructive operations:
+
+| Variable | Required value | Used by |
+| --- | --- | --- |
+| `CAN_CREATE_DATABASE` | `1` | `npm run db:create` |
+| `CAN_DROP_DATABASE` | `1` | `npm run db:drop` |
+| `CAN_SEED_DATABASE` | `1` | `npm run db:seed` |
+
+If any of these is unset, the corresponding script throws before doing anything.
+
+## Example
+
+From `.env.example`:
+
+```dotenv .env.example
+NODE_ENV=production
+
+CAN_CREATE_DATABASE=0
+CAN_DROP_DATABASE=0
+CAN_SEED_DATABASE=0
+
+# Database
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=test_db
+MYSQL_USER=test_user
+MYSQL_PASSWORD=test_password
+
+# Server
+FASTIFY_CLOSE_GRACE_DELAY=1000
+LOG_LEVEL=info
+
+# Security
+COOKIE_SECRET=
+COOKIE_NAME=session_id
+RATE_LIMIT_MAX=4 # 4 is for tests, increase if you need more
+```

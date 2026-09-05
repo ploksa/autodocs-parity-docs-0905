@@ -1,0 +1,82 @@
+---
+title: "Setup: Prerequisites, npm scripts, and repository layout"
+sidebarTitle: "Setup"
+description: "Requirements, install steps, every npm script, and the directory layout of the Fastify demo repository."
+---
+
+This page covers the local development setup in more detail than the [Quickstart](/quickstart). Everything here is drawn from [`package.json`](https://github.com/fastify/demo/blob/main/package.json), [`README.md`](https://github.com/fastify/demo/blob/main/README.md), [`tsconfig.json`](https://github.com/fastify/demo/blob/main/tsconfig.json), and the repository structure.
+
+## Requirements
+
+- **Node.js** 22 or higher (`README.md`).
+- **MySQL** 8.4, either via the provided `docker-compose.yml` or your own instance.
+- **Docker** (optional, but the simplest way to run MySQL locally).
+
+## Install
+
+```bash
+npm install
+```
+
+The project uses ES modules (`"type": "module"` in `package.json`) and TypeScript with the `fastify-tsconfig` preset (`tsconfig.json`).
+
+## npm scripts
+
+All scripts are defined in `package.json`.
+
+| Script | Command | Purpose |
+| --- | --- | --- |
+| `dev` | `tsx --env-file=.env ./src/server.ts` | Run the standalone server in dev mode using `tsx` and load env from `.env`. |
+| `build` | `tsc` | Compile TypeScript to `dist/`. |
+| `watch` | `tsc -w` | Rebuild on change. |
+| `start` | `npm run build && node dist/server.js` | Build and run the compiled standalone server. |
+| `test` | `npm run db:seed && c8 npm run test:run` | Seed the DB, then run the full test suite with coverage. |
+| `test:run` | `glob -c "tsx --test" "./test/**/*.ts"` | Run all `.ts` test files with Node's built-in test runner. |
+| `lint` | `eslint --ignore-pattern=dist` | Lint the source. |
+| `lint:fix` | `npm run lint -- --fix` | Auto-fix lint errors. |
+| `db:create` | `tsx --env-file=.env ./scripts/create-database.ts` | Create the MySQL database (requires `CAN_CREATE_DATABASE=1`). |
+| `db:drop` | `tsx --env-file=.env ./scripts/drop-database.ts` | Drop the MySQL database (requires `CAN_DROP_DATABASE=1`). |
+| `db:migrate` | `tsx --env-file=.env ./scripts/migrate.ts` | Run Postgrator migrations from `migrations/`. |
+| `db:seed` | `tsx --env-file=.env ./scripts/seed-database.ts` | Seed users and roles (requires `CAN_SEED_DATABASE=1`). |
+
+The `README.md` also documents a `standalone` script for running the demo as a standalone executable (see [`src/server.ts`](https://github.com/fastify/demo/blob/main/src/server.ts)). The current `package.json` does not define a `standalone` script; use `npm run dev` or `npm run start`, both of which execute `src/server.ts`.
+
+## Repository layout
+
+```text
+.
+├── @types/                 Ambient TypeScript declarations (ProcessEnv shape)
+├── migrations/             Postgrator SQL migrations (001..005, do/undo)
+├── scripts/                Database create/drop/migrate/seed CLIs
+├── src/
+│   ├── app.ts              Fastify service plugin (autoloads plugins and routes)
+│   ├── server.ts           Standalone entrypoint (used by `dev` and `start`)
+│   ├── plugins/
+│   │   ├── external/       Third-party plugin wrappers (cors, env, helmet,
+│   │   │                   knex, multipart, rate-limit, sensible, session,
+│   │   │                   static, swagger, under-pressure)
+│   │   └── app/            Application decorators (authorization,
+│   │       │               file-manager, password-manager, tasks/,
+│   │       │               users/)
+│   ├── routes/
+│   │   ├── home.ts         GET /
+│   │   └── api/
+│   │       ├── index.ts    GET /api
+│   │       ├── autohooks.ts Auth guard for /api/*
+│   │       ├── auth/       POST /api/auth/login
+│   │       ├── users/      PUT /api/users/update-password
+│   │       └── tasks/      Task CRUD, assignment, uploads, CSV export
+│   └── schemas/            TypeBox schemas (auth, common, tasks, users)
+├── test/                   Node built-in test runner suites
+├── docker-compose.yml      MySQL 8.4 service
+├── .env.example            Example environment configuration
+└── package.json
+```
+
+## Standalone vs fastify-cli
+
+The `README.md` mentions running the app through `fastify-cli`. In this commit, both `dev` and `start` execute [`src/server.ts`](https://github.com/fastify/demo/blob/main/src/server.ts) directly, which registers [`src/app.ts`](https://github.com/fastify/demo/blob/main/src/app.ts) as a Fastify plugin, applies recommended timeouts, and starts listening on `process.env.PORT ?? 3000`.
+
+<Info>
+  If you want to embed the demo in another Fastify app, import `serviceApp` from `src/app.js` and register it as a plugin.
+</Info>

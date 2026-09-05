@@ -1,0 +1,57 @@
+---
+title: "Authentication: Session cookies and login flow"
+sidebarTitle: "Authentication"
+description: "How the Fastify demo authenticates users with email and password and stores the resulting session in a signed cookie."
+---
+
+Authentication in the demo is a single form-style login endpoint that returns a signed session cookie. All state lives in the session; there is no JWT or refresh token flow.
+
+## Flow
+
+Source: [`src/routes/api/auth/index.ts`](https://github.com/fastify/demo/blob/main/src/routes/api/auth/index.ts).
+
+1. Client sends `POST /api/auth/login` with `{ email, password }`.
+2. The handler runs inside a Knex transaction:
+   1. `usersRepository.findByEmail(email, trx)` loads the user.
+   2. `passwordManager.compare(password, user.password)` runs constant-time scrypt comparison.
+   3. `usersRepository.findUserRolesByEmail(email, trx)` fetches the user's role names.
+3. On success, the session is populated with `{ id, email, username, roles }` and saved. The response is `{ success: true }` and a `Set-Cookie` header for the session.
+4. On failure, the response is `401 { message: "Invalid email or password." }`.
+
+## Session cookie
+
+Source: [`src/plugins/external/session.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/session.ts).
+
+- Name: `COOKIE_NAME` env var.
+- `httpOnly: true`, `secure: COOKIE_SECURED` (default `true`).
+- `maxAge: 1_800_000` ms (30 minutes).
+- Signed with `COOKIE_SECRET`.
+
+## Guard for `/api`
+
+Source: [`src/routes/api/autohooks.ts`](https://github.com/fastify/demo/blob/main/src/routes/api/autohooks.ts).
+
+An `onRequest` hook is registered for every route under `/api` (via `@fastify/autoload`'s `autoHooks: true` and `cascadeHooks: true`). It:
+
+- Allows the request through if the URL starts with `/api/auth/login`.
+- Otherwise, calls `reply.unauthorized("You must be authenticated to access this route.")` when `request.session.user` is missing.
+
+`reply.unauthorized` comes from [`@fastify/sensible`](https://github.com/fastify/fastify-sensible) and returns `401`.
+
+## Log in with curl
+
+```bash
+curl -i -c cookies.txt -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"Password123$"}'
+```
+
+Reuse the cookie jar for authenticated calls:
+
+```bash
+curl -b cookies.txt http://localhost:3000/api/tasks
+```
+
+## Change a password
+
+`PUT /api/users/update-password` is authenticated (session required) and re-validates the current password before changing it. See [Users API](/api/users).

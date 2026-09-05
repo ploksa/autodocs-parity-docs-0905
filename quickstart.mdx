@@ -1,47 +1,96 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Quickstart: Run the Fastify Demo locally in minutes"
+sidebarTitle: "Quickstart"
+description: "Install dependencies, start MySQL with Docker Compose, apply migrations, seed data, and run the Fastify demo in dev mode."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+Follow these steps to get the demo running end to end on your machine. Prerequisites and commands come from [`README.md`](https://github.com/fastify/demo/blob/main/README.md) and [`package.json`](https://github.com/fastify/demo/blob/main/package.json).
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+<Note>
+  You need Node.js 22 or higher, and Docker (for the MySQL container).
+</Note>
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Install dependencies">
+    <CodeGroup>
 
-    ```bash
-    npm install your-package
+    ```bash npm
+    npm install
     ```
+
+    </CodeGroup>
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  <Step title="Create a `.env` file">
+    Copy `.env.example` to `.env` and set values. `COOKIE_SECRET` must be at least 32 characters.
 
     ```bash
-    your-cli init
+    cp .env.example .env
+    # then edit .env and set COOKIE_SECRET to a 32+ character secret
     ```
+
+    See [Environment variables](/configuration/environment) for the full list.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
-
+  <Step title="Start MySQL with Docker Compose">
     ```bash
-    your-cli start
+    docker compose up -d
     ```
+
+    This starts a `mysql:8.4` container on port `3306` using the credentials from your `.env`. See [`docker-compose.yml`](https://github.com/fastify/demo/blob/main/docker-compose.yml).
+  </Step>
+  <Step title="Create the database">
+    ```bash
+    npm run db:create
+    ```
+
+    Requires `CAN_CREATE_DATABASE=1` in your environment. Source: [`scripts/create-database.ts`](https://github.com/fastify/demo/blob/main/scripts/create-database.ts).
+  </Step>
+  <Step title="Run migrations">
+    ```bash
+    npm run db:migrate
+    ```
+
+    Applies all SQL migrations in `migrations/` using Postgrator. See [Migrations and seeding](/database/migrations-and-seeding).
+  </Step>
+  <Step title="Seed initial data (optional)">
+    ```bash
+    npm run db:seed
+    ```
+
+    Requires `CAN_SEED_DATABASE=1`. Creates three users (`basic`, `moderator`, `admin`), each with a role of the same name. All seeded users share the password `Password123$`. Source: [`scripts/seed-database.ts`](https://github.com/fastify/demo/blob/main/scripts/seed-database.ts).
+  </Step>
+  <Step title="Start the server in dev mode">
+    ```bash
+    npm run dev
+    ```
+
+    The server listens on `http://localhost:3000` by default. Interactive API docs are served at `http://localhost:3000/api/docs` by [`@fastify/swagger-ui`](https://github.com/fastify/fastify-swagger-ui).
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Log in and call the API
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+Once seeded, log in with one of the demo accounts:
+
+```bash
+curl -i -c cookies.txt -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"Password123$"}'
+```
+
+Reuse the cookie for subsequent requests:
+
+```bash
+curl -b cookies.txt http://localhost:3000/api/tasks
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Detailed setup" icon="gear" href="/setup">
+    Requirements, scripts, and directory layout in more depth.
+  </Card>
+
+  <Card title="API reference" icon="code" href="/api/overview">
+    Every HTTP route with request and response schemas.
+  </Card>
+</CardGroup>

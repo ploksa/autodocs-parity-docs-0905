@@ -1,0 +1,78 @@
+---
+title: "Migrations and Seeding: Manage schema and demo data"
+sidebarTitle: "Migrations and Seeding"
+description: "Run Postgrator migrations and the seed script that inserts basic, moderator, and admin users for the Fastify demo."
+---
+
+The demo bundles four database scripts under [`scripts/`](https://github.com/fastify/demo/tree/main/scripts). Each is run with `tsx --env-file=.env` and requires a matching env-var guard for destructive operations.
+
+## Create the database
+
+```bash
+npm run db:create
+```
+
+Source: [`scripts/create-database.ts`](https://github.com/fastify/demo/blob/main/scripts/create-database.ts).
+
+Runs `CREATE DATABASE IF NOT EXISTS \`\${MYSQL_DATABASE}\``. Requires `CAN_CREATE_DATABASE=1\`.
+
+## Drop the database
+
+```bash
+npm run db:drop
+```
+
+Source: [`scripts/drop-database.ts`](https://github.com/fastify/demo/blob/main/scripts/drop-database.ts).
+
+Runs `DROP DATABASE IF EXISTS`. Requires `CAN_DROP_DATABASE=1`.
+
+## Run migrations
+
+```bash
+npm run db:migrate
+```
+
+Source: [`scripts/migrate.ts`](https://github.com/fastify/demo/blob/main/scripts/migrate.ts).
+
+Uses [Postgrator](https://github.com/rickbergfalk/postgrator) with:
+
+- `migrationPattern: <repo>/migrations/*`
+- `driver: 'mysql'`
+- `schemaTable: 'schemaversion'`
+
+Applied migrations at this commit:
+
+| Version | File | Effect |
+| --- | --- | --- |
+| 001 | `001.do.users.sql` | Create `users` table. |
+| 002 | `002.do.tasks.sql` | Create `tasks` table with FKs to `users`. |
+| 003 | `003.do.user_tasks.sql` | Create `user_tasks` join table. |
+| 004 | `004.do.roles.sql` | Create `roles` table. |
+| 005 | `005.do.user_roles.sql` | Create `user_roles` join table with `ON DELETE CASCADE`. |
+
+Each migration has a matching `*.undo.sql` file used by Postgrator when rolling back.
+
+## Seed initial data
+
+```bash
+npm run db:seed
+```
+
+Source: [`scripts/seed-database.ts`](https://github.com/fastify/demo/blob/main/scripts/seed-database.ts). Requires `CAN_SEED_DATABASE=1`.
+
+The script:
+
+1. Truncates every table with `FOREIGN_KEY_CHECKS = 0`.
+2. Inserts three users, each with a role of the same name, and grants a cumulative set of roles (a role hierarchy).
+
+| Username | Email | Password | Roles |
+| --- | --- | --- | --- |
+| `basic` | `basic@example.com` | `Password123$` | `basic` |
+| `moderator` | `moderator@example.com` | `Password123$` | `basic`, `moderator` |
+| `admin` | `admin@example.com` | `Password123$` | `basic`, `moderator`, `admin` |
+
+Passwords are hashed with the same `scryptHash` function used by the application (`src/plugins/app/password-manager.ts`).
+
+<Warning>
+  The seed script truncates every table before inserting. Do not run it against a database that contains data you care about.
+</Warning>

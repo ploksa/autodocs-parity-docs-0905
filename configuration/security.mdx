@@ -1,0 +1,81 @@
+---
+title: "Security Settings: Cookies, CORS, Helmet, and rate limits"
+sidebarTitle: "Security"
+description: "Security-related configuration in the Fastify demo: session cookies, CORS, Helmet, rate limiting, and under-pressure thresholds."
+---
+
+Security controls in the demo come from a small set of external plugins configured under [`src/plugins/external/`](https://github.com/fastify/demo/tree/main/src/plugins/external). This page summarises what each does and where to change it.
+
+## Session cookies
+
+Source: [`src/plugins/external/session.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/session.ts).
+
+- Cookie name: `COOKIE_NAME` env var.
+- Cookie secret: `COOKIE_SECRET` env var (at least 32 characters recommended in `README.md`).
+- Flags: `httpOnly: true`, `secure: COOKIE_SECURED` (default `true`).
+- Lifetime: `maxAge: 1_800_000` ms (30 minutes).
+
+Session state is used by the `/api` auth guard and by every route that reads `request.session.user`.
+
+## CORS
+
+Source: [`src/plugins/external/cors.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/cors.ts).
+
+Only `GET`, `POST`, `PUT`, and `DELETE` methods are permitted. No origin allowlist is configured in source, so `@fastify/cors` defaults apply.
+
+## Helmet
+
+Source: [`src/plugins/external/helmet.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/helmet.ts).
+
+Registered with default options; standard security headers are applied.
+
+## Rate limiting
+
+Source: [`src/plugins/external/rate-limit.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/rate-limit.ts).
+
+- Global limit: `RATE_LIMIT_MAX` per minute (default `100`).
+- Not-found handler: `3` requests per `500` ms per IP (`src/app.ts`).
+- `PUT /api/users/update-password`: `3` per minute (`src/routes/api/users/index.ts`).
+
+## Under pressure
+
+Source: [`src/plugins/external/under-pressure.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/under-pressure.ts).
+
+Requests are rejected with `503` when any of the following thresholds is exceeded:
+
+- Event loop delay above `1000` ms
+- Heap above `100 MB`
+- RSS above `1 GB`
+- Event loop utilization above `0.98`
+
+Health check runs `SELECT 1` on the Knex connection every `5000` ms.
+
+## Upload limits
+
+Source: [`src/plugins/external/multipart.ts`](https://github.com/fastify/demo/blob/main/src/plugins/external/multipart.ts).
+
+- Max file size: `1 * 1024 * 1024` bytes (1 MiB).
+- Max files per request: `1`.
+- Max non-file fields: `10`.
+- Max parts: `1000`.
+
+The task upload route also restricts MIME types to `image/jpeg` and `image/png`.
+
+## Password hashing
+
+Source: [`src/plugins/app/password-manager.ts`](https://github.com/fastify/demo/blob/main/src/plugins/app/password-manager.ts).
+
+Passwords are hashed with Node's built-in `scrypt`:
+
+- `keylen`: 32
+- `cost`: 65536
+- `blockSize`: 8
+- `parallelization`: 2
+
+Comparison uses `timingSafeEqual`. Hashes are stored as `"<salt-hex>.<hash-hex>"`.
+
+## Password complexity
+
+Source: [`src/schemas/users.ts`](https://github.com/fastify/demo/blob/main/src/schemas/users.ts).
+
+`PUT /api/users/update-password` requires a password that matches `^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).*$` and is at least 8 characters (one uppercase, one lowercase, one digit, one of `#?!@$%^&*-`).

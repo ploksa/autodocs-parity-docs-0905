@@ -1,0 +1,77 @@
+---
+title: "Architecture Overview: Autoloaded Fastify plugins and routes"
+sidebarTitle: "Overview"
+description: "How the Fastify demo composes external plugins, application decorators, and routes using @fastify/autoload with cascading hooks."
+---
+
+The demo builds a Fastify application by autoloading three layers of files: external plugins, application decorators, and routes. The wiring lives in [`src/app.ts`](https://github.com/fastify/demo/blob/main/src/app.ts) and the process is booted from [`src/server.ts`](https://github.com/fastify/demo/blob/main/src/server.ts).
+
+## Layers
+
+<CardGroup cols={3}>
+  <Card title="External plugins" icon="puzzle" href="/architecture/plugins">
+    Wrappers around third-party Fastify plugins (`src/plugins/external`).
+  </Card>
+
+  <Card title="App plugins" icon="layers" href="/architecture/plugins">
+    Decorators built for this application (`src/plugins/app`).
+  </Card>
+
+  <Card title="Routes" icon="code" href="/api/overview">
+    HTTP handlers autoloaded from `src/routes` with cascading hooks.
+  </Card>
+</CardGroup>
+
+## Boot order
+
+Source: `src/app.ts`.
+
+1. **External plugins** are registered first with `await`, so later stages can depend on them (for example, `knex` must be ready before `under-pressure`'s health check).
+2. **App plugins** are registered next. They decorate the Fastify instance with domain helpers (`usersRepository`, `tasksRepository`, `passwordManager`, `fileManager`, `tasksFileManager`, and the `verifyAccess` / `isAdmin` / `isModerator` request decorators).
+3. **Routes** are autoloaded with `autoHooks: true` and `cascadeHooks: true`. The `autohooks.ts` files apply to every route in and below their directory.
+
+```ts src/app.ts (excerpt)
+await fastify.register(fastifyAutoload, {
+  dir: path.join(import.meta.dirname, 'plugins/external'),
+  options: {}
+})
+fastify.register(fastifyAutoload, {
+  dir: path.join(import.meta.dirname, 'plugins/app'),
+  options: { ...opts }
+})
+fastify.register(fastifyAutoload, {
+  dir: path.join(import.meta.dirname, 'routes'),
+  autoHooks: true,
+  cascadeHooks: true,
+  options: { ...opts }
+})
+```
+
+## Standalone server
+
+`src/server.ts` creates a Fastify instance with the following non-default options:
+
+- `connectionTimeout: 120_000`
+- `requestTimeout: 60_000`
+- `keepAliveTimeout: 10_000`
+- `http.headersTimeout: 15_000`
+- `ajv.customOptions.coerceTypes: 'array'`
+- `ajv.customOptions.removeAdditional: 'all'`
+
+Logging uses `pino-pretty` when stdout is a TTY, otherwise falls back to `LOG_LEVEL` (default `silent`). Graceful shutdown is wired through [`close-with-grace`](https://github.com/mcollina/close-with-grace) using `FASTIFY_CLOSE_GRACE_DELAY` (default `500` ms in `server.ts`, `1000` ms in `.env.example`).
+
+## TypeBox type provider
+
+Route plugins use `FastifyPluginAsyncTypebox` from [`@fastify/type-provider-typebox`](https://github.com/fastify/fastify-type-provider-typebox), so request/response types are inferred from TypeBox schemas defined in `src/schemas/`.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Plugins" icon="puzzle" href="/architecture/plugins">
+    Detailed inventory of every external and app plugin.
+  </Card>
+
+  <Card title="Error handling" icon="shield" href="/architecture/error-handling">
+    Custom error handler, not-found handler, and rate-limited 404.
+  </Card>
+</CardGroup>
